@@ -4,6 +4,8 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,7 +45,7 @@ public class ReindexingService extends
 
     private Map<String, ReindexingListener> reindexingListenerMap = new ConcurrentHashMap<String, ReindexingService.ReindexingListener>();
 
-    private ThreadPool threadPool;;
+    private ThreadPool threadPool;
 
     @Inject
     public ReindexingService(final Settings settings, final Client client,
@@ -101,9 +103,15 @@ public class ReindexingService extends
         final String fromType = params.param("type");
         final String toIndex = params.param("toindex");
         final String toType = params.param("totype");
-        final String[] fields = params.paramAsBoolean("parent", true) ? new String[] {
-                "_source", "_parent" }
-                : new String[] { "_source" };
+        List<String> fieldsList = new ArrayList<>();
+        fieldsList.add("_source");
+        if (params.paramAsBoolean("parent", true)) {
+        	fieldsList.add("_parent");
+        }
+        if (params.paramAsBoolean("_routing", true)) {
+        	fieldsList.add("_parent");
+        }
+        final String[] fields = fieldsList.toArray(new String[fieldsList.size()]);
         final ReindexingListener reindexingListener = new ReindexingListener(
                 url, toIndex, toType, scroll, listener);
         final SearchRequestBuilder builder = client.prepareSearch(fromIndex)
@@ -204,6 +212,13 @@ public class ReindexingService extends
                         builder.setParent(parentId);
                     }
                 }
+                if (fields != null && fields.containsKey("_routing")) {
+                    SearchHitField routingField = fields.get("_routing");
+                    if (routingField != null) {
+                        String routing = routingField.getValue();
+                        builder.setRouting(routing);
+                    }
+                }
                 bulkRequest.add(builder);
             }
 
@@ -265,6 +280,18 @@ public class ReindexingService extends
                                                     .getValue();
                                             buf.append(",\"_parent\":\"");
                                             buf.append(parentId);
+                                            buf.append("\"");
+                                        }
+                                    }
+                                    if (fields != null
+                                            && fields.containsKey("_routing")) {
+                                        SearchHitField routingField = fields
+                                                .get("_routing");
+                                        if (routingField != null) {
+                                            String routing = routingField
+                                                    .getValue();
+                                            buf.append(",\"_routing\":\"");
+                                            buf.append(routing);
                                             buf.append("\"");
                                         }
                                     }
